@@ -49,15 +49,17 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# --- Configuration ---
+FAMILIES = ['GROCERY I', 'BEVERAGES', 'PRODUCE']
+
 # --- Logic from P1.py (Simplified/Integrated for Streamlit) ---
 
 @st.cache_data
-def load_and_train_model():
+def load_and_train_sales_model():
     # Helper to generate mock data if needed
     def generate_mock_kaggle_data(days=600):
         dates = pd.date_range(start='2025-01-01', periods=days, freq='D')
         stores_list = [1, 2, 3]
-        families = ['GROCERY I', 'BEVERAGES', 'PRODUCE']
         
         stores = pd.DataFrame({
             'store_nbr': stores_list,
@@ -67,7 +69,7 @@ def load_and_train_model():
         rows = []
         for d in dates:
             for s in stores_list:
-                for f in families:
+                for f in FAMILIES:
                     base = 50 + (d.dayofyear / 10) 
                     if d.weekday() >= 5: base *= 1.4 
                     sales = base + np.random.normal(0, 5)
@@ -97,10 +99,10 @@ def load_and_train_model():
     model = RandomForestRegressor(n_estimators=50, random_state=42)
     model.fit(X, y)
     
-    return model, X.columns, families
+    return model, X.columns
 
 # Initialize
-model, feature_names, families = load_and_train_model()
+model, feature_names = load_and_train_sales_model()
 
 # --- UI Components ---
 
@@ -110,7 +112,7 @@ st.sidebar.markdown("Adjust parameters to forecast demand.")
 with st.sidebar:
     selected_date = st.date_input("Prediction Date", datetime.now() + timedelta(days=1))
     store_nbr = st.selectbox("Store Number", [1, 2, 3])
-    family = st.selectbox("Product Family", families)
+    family = st.selectbox("Product Family", FAMILIES)
     on_promotion = st.checkbox("Is On Promotion?")
     oil_price = st.slider("Current Oil Price ($)", 40.0, 120.0, 75.0)
 
@@ -140,8 +142,8 @@ with col1:
         row = pd.DataFrame([input_data])
         
         # Reconstruct encoding
-        for fam in families:
-            if fam != families[0]: # drop_first
+        for fam in FAMILIES:
+            if fam != FAMILIES[0]: # drop_first
                 row[f'family_{fam}'] = 1 if family == fam else 0
         
         # Type_D (drop_first assumed if type B comes first alphabetically? No, D comes after B)
