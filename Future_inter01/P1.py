@@ -8,16 +8,11 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import warnings
 
 warnings.filterwarnings('ignore')
-
-# Set style for business-friendly plots
 plt.style.use('seaborn-v0_8-whitegrid')
 sns.set_context("talk")
 
 def load_data():
-    """
-    Attempts to load Kaggle Store Sales data from CSV files.
-    If files are missing, generates a high-fidelity synthetic mock of the Kaggle structure.
-    """
+    
     files = ['train.csv', 'stores.csv', 'oil.csv', 'holidays_events.csv']
     data_path = "./"
     
@@ -40,14 +35,11 @@ def load_data():
     return generate_mock_kaggle_data()
 
 def generate_mock_kaggle_data(days=600):
-    """
-    Generates synthetic data mirroring the Kaggle Store Sales structure.
-    """
+    
     dates = pd.date_range(start='2025-01-01', periods=days, freq='D')
     stores_list = [1, 2, 3]
     families = ['GROCERY I', 'BEVERAGES', 'PRODUCE']
     
-    # Store Metadata
     stores = pd.DataFrame({
         'store_nbr': stores_list,
         'city': ['Quito', 'Guayaquil', 'Cuenca'],
@@ -55,13 +47,11 @@ def generate_mock_kaggle_data(days=600):
         'type': ['D', 'B', 'B'],
         'cluster': [13, 6, 6]
     })
-    
-    # Oil Data
+
     oil = pd.DataFrame({'date': dates})
     oil['dcoilwtico'] = 70 + 5 * np.sin(np.arange(days) / 30) + np.random.normal(0, 1, days)
     oil['date'] = oil['date'].dt.strftime('%Y-%m-%d')
     
-    # Holidays
     holidays = pd.DataFrame({
         'date': [dates[100].strftime('%Y-%m-%d'), dates[200].strftime('%Y-%m-%d')],
         'type': ['Holiday', 'Event'],
@@ -76,9 +66,9 @@ def generate_mock_kaggle_data(days=600):
     for d in dates:
         for s in stores_list:
             for f in families:
-                # Base sales with seasonality and trend
+                
                 base = 50 + (d.dayofyear / 10) 
-                if d.weekday() >= 5: base *= 1.4 # Weekend boost
+                if d.weekday() >= 5: base *= 1.4 
                 sales = base + np.random.normal(0, 5)
                 rows.append([d.strftime('%Y-%m-%d'), s, f, max(0, sales), np.random.randint(0, 10)])
                 
@@ -87,12 +77,10 @@ def generate_mock_kaggle_data(days=600):
     return train, stores, oil, holidays
 
 def preprocess_data(train, stores, oil, holidays):
-    """
-    Merges datasets and handles missing values.
-    """
+    
     print("\n--- Data Preprocessing ---")
     
-    # Convert dates
+
     for df in [train, oil, holidays]:
         df['date'] = pd.to_datetime(df['date'])
         
@@ -100,57 +88,52 @@ def preprocess_data(train, stores, oil, holidays):
     df = train.merge(stores, on='store_nbr', how='left')
     df = df.merge(oil, on='date', how='left')
     
-    # Holidays: Simple mapping (Is it a holiday?)
+    
     holidays = holidays[holidays['transferred'] == False]
     df['is_holiday'] = df['date'].isin(holidays['date']).astype(int)
     
-    # Interpolate oil prices
+    
     df['dcoilwtico'] = df['dcoilwtico'].interpolate(limit_direction='both')
     
     return df
 
 def feature_engineering(df):
-    """
-    Creates time-series features: time components, lags, and rolling averages.
-    """
+    
     print("Engineering features...")
     df = df.copy()
     
-    # Time components
+    
     df['dayofweek'] = df['date'].dt.dayofweek
     df['month'] = df['date'].dt.month
     df['year'] = df['date'].dt.year
     df['is_weekend'] = (df['dayofweek'] >= 5).astype(int)
     
-    # Sort for time-series features
+
     df = df.sort_values(['store_nbr', 'family', 'date'])
     
-    # Lags (using group-based shift to avoid mixing stores/families)
+   
     df['lag_7'] = df.groupby(['store_nbr', 'family'])['sales'].shift(7)
     df['lag_14'] = df.groupby(['store_nbr', 'family'])['sales'].shift(14)
     
-    # Rolling Mean
+   
     df['rolling_mean_7'] = df.groupby(['store_nbr', 'family'])['sales'].shift(1).rolling(7).mean().reset_index(0, drop=True)
     
-    # Drop NaNs created by lags
+   
     df = df.dropna()
     
-    # Encode categorical features
+    
     df = pd.get_dummies(df, columns=['family', 'type'], drop_first=True)
     
     return df
 
 def train_and_evaluate(df):
-    """
-    Trains a model and evaluates business metrics.
-    """
+
     print("\n--- Training Model ---")
-    # Features
+    
     drop_cols = ['date', 'sales', 'city', 'state']
     X = df.drop(columns=[col for col in drop_cols if col in df.columns])
     y = df['sales']
     
-    # Time-based Split (Last 30 days for testing)
     test_cutoff = df['date'].max() - pd.Timedelta(days=30)
     
     train_idx = df['date'] <= test_cutoff
@@ -166,7 +149,7 @@ def train_and_evaluate(df):
     
     predictions = model.predict(X_test)
     
-    # Metrics
+   
     mae = mean_absolute_error(y_test, predictions)
     rmse = np.sqrt(mean_squared_error(y_test, predictions))
     r2 = r2_score(y_test, predictions)
@@ -178,10 +161,7 @@ def train_and_evaluate(df):
     return model, X_test, y_test, predictions, X.columns
 
 def visualize_business_insights(df, y_test, predictions, model, feature_names):
-    """
-    Generates meaningful visualizations for stakeholders.
-    """
-    # 1. Forecast Plot
+    
     plt.figure(figsize=(15, 6))
     subset_idx = y_test.index[:200] # Show a portion for clarity
     plt.plot(range(len(subset_idx)), y_test.loc[subset_idx], label='Actual Demand', color='#2c3e50', lw=2)
@@ -193,7 +173,7 @@ def visualize_business_insights(df, y_test, predictions, model, feature_names):
     plt.tight_layout()
     plt.savefig('sales_forecast_plot.png')
     
-    # 2. Feature Importance
+  
     importances = pd.Series(model.feature_importances_, index=feature_names).sort_values(ascending=False).head(10)
     plt.figure(figsize=(10, 6))
     sns.barplot(x=importances.values, y=importances.index, palette='magma')
@@ -205,9 +185,7 @@ def visualize_business_insights(df, y_test, predictions, model, feature_names):
     print("\nVisualizations saved: sales_forecast_plot.png, feature_importance.png")
 
 def business_report(y_test, predictions):
-    """
-    Final summary for business stakeholders.
-    """
+   
     error_rate = (mean_absolute_error(y_test, predictions) / y_test.mean()) * 100
     print("\n" + "="*40)
     print("   BUSINESS PLANNING SUMMARY")
@@ -223,7 +201,7 @@ def business_report(y_test, predictions):
 def main():
     print("Initializing Advanced Sales Forecasting Pipeline...")
     
-    # pipeline
+  
     train, stores, oil, holidays = load_data()
     df = preprocess_data(train, stores, oil, holidays)
     df_engineered = feature_engineering(df)
